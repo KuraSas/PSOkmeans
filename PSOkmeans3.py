@@ -3,7 +3,8 @@
 Created on Thu Jul  4 16:10:03 2019
 
 @author: chocolate
-针对原始数据进行聚类 二维可视化看是否合适
+针对原始数据进行聚类 
+比较降维前后的聚类变化情况
 """
 
 import pandas as pd
@@ -48,8 +49,8 @@ def PSOcenters(data, n_cluster, n_particle, kmax):
     c1 = 2
     c2 = 2
 #    随机初始化速度与粒子位置
-#    cen_arr = np.random.uniform(low=-40, high=40, size = (n_particle, n_cluster, data_dim))
-#    随机初始化效果不好 选择点进行初始化质心
+#    cen_arr = np.random.uniform(low=-40, high=40, size=(n_particle, n_cluster, data_dim))
+#    随机初始化效果不好 选择不同数据点进行初始化质心
     for i in range(0, n_particle):
         for j in range(0, n_cluster):
             random_index = np.random.randint(low = 0, high = data_num-1)
@@ -60,11 +61,14 @@ def PSOcenters(data, n_cluster, n_particle, kmax):
 #        计算全体最优值和个体最优值
         for i in range(0, n_particle):
             labels = kmeans_one(data, n_cluster, cen_arr[i])
-#            避免全部都归成一类
+#            避免全部都归成一类 强行纠正
             if np.unique(labels).shape[0] == 1:
-                labels[0] = 0
-                labels[1] = 1
-                labels[2] = 2
+                random_index = np.random.randint(low = 0, high = data_num-1)
+                labels[random_index] = 0
+                random_index = np.random.randint(low = 0, high = data_num-1)
+                labels[random_index] = 1
+                random_index = np.random.randint(low = 0, high = data_num-1)
+                labels[random_index] = 2
             temp = CHfitness(data, labels)
             if temp > fit_pbest_arr[i]:
                 pbest_arr[i] = cen_arr[i]
@@ -80,81 +84,90 @@ def PSOcenters(data, n_cluster, n_particle, kmax):
         print('%d'%(k/kmax*100),'%')
     return gbest,labels
 
+def main():
+#    开始计时
+    start = timeit.default_timer()
+    
+    n_feature = 4
+    alldata1 = scio.loadmat('alldata1.mat')
+    alldata1 = alldata1['alldata1']
+    alldata2 = scio.loadmat('alldata2.mat')
+    alldata2 = alldata2['alldata2']
+    alldata3 = scio.loadmat('alldata3.mat')
+    alldata3 = alldata3['alldata3']
+    alldata4 = scio.loadmat('alldata4.mat')
+    alldata4 = alldata4['alldata4']
+    df1 = pd.DataFrame(alldata1)
+    df2 = pd.DataFrame(alldata2)
+    df3 = pd.DataFrame(alldata3)
+    df4 = pd.DataFrame(alldata4)
+    df_fusion = df1.copy()
+    
+    temparray = np.zeros((df_fusion.size, n_feature))
+    tempdf = pd.DataFrame(temparray)
+    temparray = np.zeros(df_fusion.size)
+    tempdf1d = pd.DataFrame(temparray)
+    alldata11d = df1.values.flatten()
+    alldata21d = df2.values.flatten()
+    alldata31d = df3.values.flatten()
+    alldata41d = df4.values.flatten()
+    
+#    利用pca进行四个特征融合成一个特征
+    tempdf.iloc[:,0] = alldata11d
+    tempdf.iloc[:,1] = alldata21d
+    tempdf.iloc[:,2] = alldata31d
+    tempdf.iloc[:,3] = alldata41d
+    r, c = tempdf.shape
+    pca = PCA(n_components=1) 
+    pca.fit(tempdf)
+    df_fusion = pca.transform(tempdf)
+    df_fusion = df_fusion.reshape(alldata1.shape)
+    df_fusion = pd.DataFrame(df_fusion)
+    alldata = df_fusion.values#.value可以直接转换成ndarray的形式
+#    alldata 和 df_fusion 就是最后我们的得到融合完的特征 
+#    分别是ndarray和dataframe格式
+#    得到融合后的矩阵 直接聚类
+    alldata_kmeans = KMeans(n_clusters=3).fit(alldata)#直接聚类效果
+#    ==========================================================================
+#    tsne联合pca降维
+    pca = PCA(n_components=80)
+    pca.fit(alldata)
+    alldata_pca = pca.transform(alldata)
+    tsne = TSNE(n_components=2, perplexity=10, learning_rate=150 , init='pca')
+    alldata_tsne = tsne.fit_transform(alldata_pca)
+    alldata_tsnekmeans = KMeans(n_clusters=3).fit(alldata_tsne)#联合聚类的效果
+    
+#    绘制聚类图 利用df绘图方便
+    df = pd.DataFrame(alldata_tsne,index=alldata_tsnekmeans.labels_,columns=['x','y'])
+    df_k1 = df[df.index==0]
+    df_k2 = df[df.index==1]
+    df_k3 = df[df.index==2]
+    fig = plt.figure(figsize=(10, 10))
+    plt.scatter(df_k1.loc[:,['x']],df_k1.loc[:,['y']], s=50, c='red',marker='d')
+    plt.scatter(df_k2.loc[:,['x']],df_k2.loc[:,['y']], s=50, c='green',marker='*')
+    plt.scatter(df_k3.loc[:,['x']],df_k3.loc[:,['y']], s=50, c='brown',marker='p')
+#    ==========================================================================
+#    PSO寻找质心 给出参数 粒子数n_particle 聚类数n_clusters 最大迭代次数kmax
+    n_clusters = 3
+    n_particle = 50
+    kmax = 100
+    
+#    20890维的数据
+    best_cens, labels = PSOcenters(alldata, n_clusters, n_particle, kmax)
+#    2维
+    best_cens_2d, labels_2d = PSOcenters(alldata_tsne, n_clusters, n_particle, kmax)
+    
+    score1 = metrics.calinski_harabaz_score(alldata_tsne, labels_2d)
+    score2 = metrics.calinski_harabaz_score(alldata_tsne, alldata_tsnekmeans.labels_)
+    score3 = metrics.calinski_harabaz_score(alldata, labels)
+    score4 = metrics.calinski_harabaz_score(alldata, alldata_kmeans.labels_)
+    print(score1)
+    print(score2)
+    print(score3)
+    print(score4)
+#    打印耗时间
+    end = timeit.default_timer()
+    print('-----------------%s-----------------'%(end-start))
 
-start = timeit.default_timer()
-
-n_feature = 4
-alldata1 = scio.loadmat('alldata1.mat')
-alldata1 = alldata1['alldata1']
-alldata2 = scio.loadmat('alldata2.mat')
-alldata2 = alldata2['alldata2']
-alldata3 = scio.loadmat('alldata3.mat')
-alldata3 = alldata3['alldata3']
-alldata4 = scio.loadmat('alldata4.mat')
-alldata4 = alldata4['alldata4']
-df1 = pd.DataFrame(alldata1)
-df2 = pd.DataFrame(alldata2)
-df3 = pd.DataFrame(alldata3)
-df4 = pd.DataFrame(alldata4)
-df_fusion = df1.copy()
-
-temparray = np.zeros((df_fusion.size, n_feature))
-tempdf = pd.DataFrame(temparray)
-temparray = np.zeros(df_fusion.size)
-tempdf1d = pd.DataFrame(temparray)
-alldata11d = df1.values.flatten()
-alldata21d = df2.values.flatten()
-alldata31d = df3.values.flatten()
-alldata41d = df4.values.flatten()
-
-#利用pca进行四个特征融合成一个特征
-tempdf.iloc[:,0] = alldata11d
-tempdf.iloc[:,1] = alldata21d
-tempdf.iloc[:,2] = alldata31d
-tempdf.iloc[:,3] = alldata41d
-r, c = tempdf.shape
-pca = PCA(n_components=1) 
-pca.fit(tempdf)
-df_fusion = pca.transform(tempdf)
-df_fusion = df_fusion.reshape(alldata1.shape)
-df_fusion = pd.DataFrame(df_fusion)
-alldata = df_fusion.values
-#alldata 和 df_fusion 就是最后我们的得到融合完的特征 
-#分别是ndarray和dataframe格式
-# =============================================================================
-#得到融合后的矩阵 直接聚类
-alldata_kmeans = KMeans(n_clusters=3).fit(alldata)#直接聚类效果
-
-#tsne联合pca降维
-pca = PCA(n_components=80)
-pca.fit(alldata)
-alldata_pca = pca.transform(alldata)
-tsne = TSNE(n_components=2, perplexity=10, learning_rate=150 , init='pca')
-alldata_tsne = tsne.fit_transform(alldata_pca)
-alldata_tsnekmeans = KMeans(n_clusters=3).fit(alldata_tsne)#联合聚类的效果
-
-#绘制聚类图 利用df绘图方便
-df = pd.DataFrame(alldata_tsne,index=alldata_tsnekmeans.labels_,columns=['x','y'])
-df_k1 = df[df.index==0]
-df_k2 = df[df.index==1]
-df_k3 = df[df.index==2]
-fig = plt.figure(figsize=(10, 10))
-plt.scatter(df_k1.loc[:,['x']],df_k1.loc[:,['y']], s=50, c='red',marker='d')
-plt.scatter(df_k2.loc[:,['x']],df_k2.loc[:,['y']], s=50, c='green',marker='*')
-plt.scatter(df_k3.loc[:,['x']],df_k3.loc[:,['y']], s=50, c='brown',marker='p')
-# =============================================================================
-
-#PSO寻找质心
-n_clusters = 3
-n_particle = 50
-kmax = 100
-
-#20820维
-best_cens, labels = PSOcenters(alldata, n_clusters, n_particle, kmax)
-#2维
-best_cens_2d, labels_2d = PSOcenters(alldata_tsne, n_clusters, n_particle, kmax)
-
-score = metrics.calinski_harabaz_score(alldata_tsne, labels_2d)
-#打印耗时间
-end = timeit.default_timer()
-print('-----------------%s'%(end-start))
+if __name__=='__main__':
+    main()

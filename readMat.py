@@ -14,63 +14,39 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.manifold import TSNE
 from mpl_toolkits.mplot3d import Axes3D 
 from sklearn.cluster import KMeans
-data = scio.loadmat('gliomas_multi_omic_data.mat')
-#读取到的是一个字典 所有的数据都在'g阿文liomas_multi_omic_data'最后一项
-data = data['gliomas_multi_omic_data']
-data2 = data[0][0]
+from sklearn import metrics
 
-s = scio.loadmat('S.mat')
-s = s['S']
-s = pd.DataFrame(s)
+#class plotParameter:
+    
+def plotCluster(data, labels):
+    df = pd.DataFrame(data, index = labels)
+    df_k1 = df[df.index==0]
+    df_k2 = df[df.index==1]
+    df_k3 = df[df.index==2]
+    fig = plt.figure(figsize=(10, 10))
+    plt.scatter(df_k1.iloc[:,[0]],df_k1.iloc[:,[1]], s=50, c='red',marker='d')
+    plt.scatter(df_k2.iloc[:,[0]],df_k2.iloc[:,[1]], s=50, c='green',marker='*')
+    plt.scatter(df_k3.iloc[:,[0]],df_k3.iloc[:,[1]], s=50, c='brown',marker='p')
 
-ydata = scio.loadmat('ydata.mat')
-ydata = ydata['ydata']
-ydata = pd.DataFrame(ydata)
+def main():
+#    读取到的是一个字典 所有的数据都在's'最后一项的key对应的
+    s = scio.loadmat('S.mat')
+    s = s['S']
+#    s = pd.DataFrame(s)
+    
+    ydata = scio.loadmat('ydata.mat')
+    ydata = ydata['ydata']
+    
+    ydata_kmeans = KMeans(n_clusters=3).fit(ydata)
+    plotCluster(ydata, labels=ydata_kmeans.labels_)
+    score = metrics.calinski_harabaz_score(ydata, ydata_kmeans.labels_)
 
-fig = plt.figure(figsize=(12, 12)) # 设置画面大小
-sns.heatmap(s,square=True)
-plt.show()
-fig = plt.figure(figsize=(12, 12))
-plt.scatter(ydata[0],ydata[1])
-plt.show()
-
-#pca = PCA(n_components=2) 
-#pca.fit(s)
-#s_pca = pca.transform(s)
-#fig = plt.figure(figsize=(12, 12))
-#plt.scatter(s_pca[:,0],s_pca[:,1])
-#plt.show()
-
-fig = plt.figure()
-pca = PCA(n_components = 80) 
-pca.fit(s)
-s_pca = pca.transform(s)
-ax = Axes3D(fig)
-ax.scatter(s_pca[:,0], s_pca[:,1], s_pca[:,2])
-
-svd = TruncatedSVD(n_components=5, n_iter=7, random_state=42)
-svd.fit(s) 
-s_pca = pca.transform(s)
-ax = Axes3D(fig)
-ax.scatter(s_pca[:,0], s_pca[:,1], s_pca[:,2])
+if __name__=='__main__':
+    main()
 
 
-fig = plt.figure()
-tsne = TSNE(n_components=2, init='pca', random_state=501)
-s_tsne = tsne.fit_transform(s)
-fig = plt.figure(figsize=(12, 12))
-plt.scatter(s_tsne[:,0],s_tsne[:,1])
-plt.show()
 
-fig = plt.figure()
-tsne = TSNE(n_components=2)
-s_tsne = tsne.fit_transform(s)
-s_tsne_kmeans = KMeans(n_clusters=3, random_state=0).fit(s_tsne)
-print(s_tsne_kmeans.labels_)
-ax = Axes3D(fig)
-ax.scatter(s_tsne[:,0], s_tsne[:,1])
 
-fig = plt.figure()
-fig = plt.figure(figsize=(12, 12))
-plt.scatter(s_tsne[:,0],s_tsne[:,1])
-plt.show()
+
+
+
